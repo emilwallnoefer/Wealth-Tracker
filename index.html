@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wealth Tracker</title>
+  <meta name="theme-color" content="#0b0f14"/>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <!-- CDNs (no build step) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" defer></script>
+  <script src="app.js" type="module" defer></script>
+</head>
+<body class="dark">
+  <header class="topbar">
+    <div class="brand">💠 Wealth Tracker</div>
+    <div class="actions">
+      <button id="btn-import" class="btn">Import CSV</button>
+      <button id="btn-add-holding" class="btn">Add Holding</button>
+      <span id="status-badge" class="badge">Offline-ready</span>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <nav>
+      <button class="nav-link active" data-view="dashboard">Dashboard</button>
+      <button class="nav-link" data-view="transactions">Transactions</button>
+      <button class="nav-link" data-view="investments">Investments</button>
+      <button class="nav-link" data-view="subscriptions">Subscriptions</button>
+      <button class="nav-link" data-view="imports">Imports</button>
+      <button class="nav-link" data-view="settings">Settings</button>
+    </nav>
+  </aside>
+
+  <main id="view-container">
+    <!-- Views are injected by app.js -->
+  </main>
+
+  <!-- Right-side chat drawer -->
+  <section id="chat-drawer" class="chat-drawer closed" aria-label="AI Chat">
+    <header class="chat-header">
+      <span>Assistant</span>
+      <button id="chat-toggle" class="icon-btn" title="Toggle chat">✖</button>
+    </header>
+    <div id="chat-messages" class="chat-messages"></div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" type="text" placeholder="Ask about your money..." autocomplete="off" />
+      <button class="btn" type="submit">Send</button>
+    </form>
+  </section>
+
+  <button id="chat-open" class="chat-fab" title="Chat">💬</button>
+
+  <footer class="footer">
+    <span>Wealth Tracker v0.1</span>
+    <span class="muted">GitHub Pages · PWA · 2025-10-27</span>
+  </footer>
+
+  <!-- Hidden file input for CSV -->
+  <input type="file" id="csv-file" accept=".csv,text/csv" hidden />
+
+  <template id="tmpl-dashboard">
+    <section class="grid">
+      <div class="card kpi">
+        <div class="kpi-label">Net Worth</div>
+        <div class="kpi-value" id="kpi-networth">—</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">This Month Spend</div>
+        <div class="kpi-value" id="kpi-spend">—</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">Savings Rate</div>
+        <div class="kpi-value" id="kpi-savings-rate">—</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Net Worth over time</div>
+        <canvas id="chart-networth" height="120"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Monthly Cashflow</div>
+        <canvas id="chart-cashflow" height="120"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Category Breakdown (last 90d)</div>
+        <canvas id="chart-cats" height="120"></canvas>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Latest Transactions</div>
+        <div id="latest-tx"></div>
+      </div>
+    </section>
+  </template>
+
+  <template id="tmpl-transactions">
+    <section class="stack">
+      <div class="card">
+        <div class="card-title">Filters</div>
+        <div class="filters">
+          <input id="filter-text" placeholder="Search merchant/category..." />
+          <select id="filter-category"><option value="">All categories</option></select>
+          <select id="filter-account"><option value="">All accounts</option></select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Transactions</div>
+        <table class="table" id="tx-table">
+          <thead>
+            <tr><th>Date</th><th>Account</th><th>Merchant</th><th>Category</th><th class="right">Amount (CHF)</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </template>
+
+  <template id="tmpl-investments">
+    <section class="stack">
+      <div class="card">
+        <div class="card-title">Holdings</div>
+        <form id="holding-form" class="row">
+          <input name="symbol" placeholder="Symbol (e.g., AAPL)" required />
+          <input name="quantity" type="number" step="any" placeholder="Quantity" required />
+          <input name="cost" type="number" step="any" placeholder="Cost basis (CHF)" required />
+          <button class="btn" type="submit">Add</button>
+        </form>
+        <table class="table" id="holdings-table">
+          <thead>
+            <tr><th>Symbol</th><th>Qty</th><th>Cost Basis (CHF)</th><th>Last Price (CHF)*</th><th>P/L</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="muted">* Demo prices are mocked until a serverless quote API is configured.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Portfolio Overview</div>
+        <canvas id="chart-portfolio" height="120"></canvas>
+      </div>
+    </section>
+  </template>
+
+  <template id="tmpl-subscriptions">
+    <section class="stack">
+      <div class="card">
+        <div class="card-title">Active Subscriptions</div>
+        <form id="sub-form" class="row">
+          <input name="name" placeholder="Name (e.g., Spotify)" required />
+          <input name="amount" type="number" step="any" placeholder="Amount (CHF)" required />
+          <select name="cadence">
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+          <input name="next_date" type="date" required />
+          <button class="btn" type="submit">Add</button>
+        </form>
+        <table class="table" id="subs-table">
+          <thead><tr><th>Name</th><th>Amount</th><th>Cadence</th><th>Next Charge</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Monthly Subscription Burn</div>
+        <canvas id="chart-subburn" height="120"></canvas>
+      </div>
+    </section>
+  </template>
+
+  <template id="tmpl-imports">
+    <section class="stack">
+      <div class="card">
+        <div class="card-title row-between">
+          <span>Import CSV</span>
+          <div class="row">
+            <select id="import-source">
+              <option value="generic">Generic</option>
+              <option value="revolut">Revolut</option>
+              <option value="bcv">BCV</option>
+              <option value="raiffeisen_it">Raiffeisen (IT)</option>
+            </select>
+            <button id="btn-choose-file" class="btn">Choose CSV</button>
+          </div>
+        </div>
+        <div id="import-preview" class="import-preview muted">
+          No file selected.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Import History</div>
+        <ul id="import-history" class="list"></ul>
+      </div>
+    </section>
+  </template>
+
+  <template id="tmpl-settings">
+    <section class="stack">
+      <div class="card">
+        <div class="card-title">Settings</div>
+        <div class="row">
+          <label>Base Currency</label>
+          <select id="base-currency">
+            <option value="CHF" selected>CHF</option>
+            <option value="EUR">EUR</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+        <div class="muted">AI & quotes are stubbed in this GitHub Pages version. Later we’ll connect a secure serverless endpoint.</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Data</div>
+        <div class="row">
+          <button id="btn-export" class="btn">Export JSON</button>
+          <button id="btn-reset" class="btn danger">Reset Demo Data</button>
+        </div>
+      </div>
+    </section>
+  </template>
+
+</body>
+</html>
