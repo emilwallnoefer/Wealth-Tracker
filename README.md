@@ -1,4 +1,4 @@
-# Wealth Tracker v0.1
+# Wealth Tracker v0.2
 
 Static PWA for GitHub Pages. Dark UI, charts, CSV import (AI-stub), manual holdings with mocked prices, right-side chat (local demo).
 
@@ -11,7 +11,7 @@ Static PWA for GitHub Pages. Dark UI, charts, CSV import (AI-stub), manual holdi
 - CSV import uses a **local heuristic** to simulate AI mapping. No data leaves your browser.
 - Investment prices are **mocked** in this version (GH Pages cannot safely store API keys). Later, add serverless quotes.
 - Service worker caches files for offline use.
-- Version visible in the footer: v0.1.
+- Version visible in the footer: v0.2.
 
 ## Files
 - `index.html` — app shell and views

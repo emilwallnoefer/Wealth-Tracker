@@ -1,5 +1,5 @@
 // Basic cache-first service worker for GitHub Pages
-const CACHE_NAME = 'wealth-tracker-v0.1';
+const CACHE_NAME = 'wealth-tracker-v0.2';
 const ASSETS = [
   './',
   './index.html',

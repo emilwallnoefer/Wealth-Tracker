@@ -55,7 +55,7 @@
   <button id="chat-open" class="chat-fab" title="Chat">💬</button>
 
   <footer class="footer">
-    <span>Wealth Tracker v0.1</span>
+    <span>Wealth Tracker v0.2</span>
     <span class="muted">GitHub Pages · PWA · 2025-10-27</span>
   </footer>
 
@@ -72,24 +72,22 @@
         <div class="kpi-label">This Month Spend</div>
         <div class="kpi-value" id="kpi-spend">—</div>
       </div>
-      <div class="card kpi">
-        <div class="kpi-label">Savings Rate</div>
-        <div class="kpi-value" id="kpi-savings-rate">—</div>
+      <div class="card note">
+        <div class="kpi-sub" id="kpi-currencies">—</div>
       </div>
 
       <div class="card">
-        <div class="card-title">Net Worth over time</div>
-        <canvas id="chart-networth" height="120"></canvas>
+        <div class="card-title row-between">Net Worth over time
+          <div class="segmented" id="nw-range">
+            <button data-range="3y">3y</button><button data-range="2y">2y</button><button data-range="1y" class="active">1y</button><button data-range="6m">6m</button><button data-range="1m">1m</button>
+          </div>
+        </div>
+        <canvas id="chart-networth" height="140"></canvas>
       </div>
 
       <div class="card">
         <div class="card-title">Monthly Cashflow</div>
         <canvas id="chart-cashflow" height="120"></canvas>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Category Breakdown (last 90d)</div>
-        <canvas id="chart-cats" height="120"></canvas>
       </div>
 
       <div class="card">
@@ -101,6 +99,16 @@
 
   <template id="tmpl-transactions">
     <section class="stack">
+      <div class="card">
+        <div class="card-title row-between">Category Breakdown
+          <div class="row">
+            <button class="btn" id="tx-month-prev">◀</button>
+            <span id="tx-month-label" class="muted"></span>
+            <button class="btn" id="tx-month-next">▶</button>
+          </div>
+        </div>
+        <canvas id="chart-cats-monthly" height="120"></canvas>
+      </div>
       <div class="card">
         <div class="card-title">Filters</div>
         <div class="filters">
@@ -124,24 +132,32 @@
   <template id="tmpl-investments">
     <section class="stack">
       <div class="card">
-        <div class="card-title">Holdings</div>
+        <div class="card-title">Add Holding</div>
         <form id="holding-form" class="row">
           <input name="symbol" placeholder="Symbol (e.g., AAPL)" required />
           <input name="quantity" type="number" step="any" placeholder="Quantity" required />
           <input name="cost" type="number" step="any" placeholder="Cost basis (CHF)" required />
+          <input name="buy_date" type="date" required />
           <button class="btn" type="submit">Add</button>
         </form>
+      </div>
+      <div class="card">
+        <div class="card-title">Holdings</div>
         <table class="table" id="holdings-table">
           <thead>
-            <tr><th>Symbol</th><th>Qty</th><th>Cost Basis (CHF)</th><th>Last Price (CHF)*</th><th>P/L</th><th></th></tr>
+            <tr><th>Symbol</th><th>Qty</th><th>Cost (CHF)</th><th>Buy Date</th><th>Last Price*</th><th>P/L</th><th>Spark</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
-        <div class="muted">* Demo prices are mocked until a serverless quote API is configured.</div>
+        <div class="muted">* Demo prices & sparklines are mocked until quote API is configured.</div>
       </div>
       <div class="card">
-        <div class="card-title">Portfolio Overview</div>
-        <canvas id="chart-portfolio" height="120"></canvas>
+        <div class="card-title row-between">Portfolio
+          <div class="segmented" id="pf-range">
+            <button data-range="1y" class="active">1y</button><button data-range="6m">6m</button><button data-range="1m">1m</button>
+          </div>
+        </div>
+        <canvas id="chart-portfolio-pl" height="140"></canvas>
       </div>
     </section>
   </template>
@@ -152,16 +168,21 @@
         <div class="card-title">Active Subscriptions</div>
         <form id="sub-form" class="row">
           <input name="name" placeholder="Name (e.g., Spotify)" required />
-          <input name="amount" type="number" step="any" placeholder="Amount (CHF)" required />
+          <input name="amount" type="number" step="any" placeholder="Amount" required />
+          <select name="currency">
+            <option value="CHF">CHF</option><option value="EUR">EUR</option><option value="USD">USD</option>
+          </select>
           <select name="cadence">
             <option value="monthly">Monthly</option>
             <option value="yearly">Yearly</option>
           </select>
+          <input name="start_date" type="date" required />
           <input name="next_date" type="date" required />
           <button class="btn" type="submit">Add</button>
         </form>
+        <div class="muted" id="subs-total"></div>
         <table class="table" id="subs-table">
-          <thead><tr><th>Name</th><th>Amount</th><th>Cadence</th><th>Next Charge</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Amount</th><th>Currency</th><th>Cadence</th><th>Start</th><th>Next</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </div>

@@ -2,7 +2,7 @@
 // SPA with vanilla JS + Chart.js + PapaParse. LocalStorage for data.
 // AI & quotes are stubbed to keep secrets off the client.
 
-const VERSION = "v0.1";
+const VERSION = "v0.2";
 
 const state = {
   baseCurrency: "CHF",
@@ -82,7 +82,7 @@ document.querySelectorAll(".nav-link").forEach(btn => {
 });
 
 // ---------- Dashboard ----------
-let chartNetworth, chartCashflow, chartCats;
+let chartNetworth, chartCashflow;
 function initDashboard() {
   // KPIs
   const networth = state.accounts.reduce((sum, a)=> sum + accountBalance(a.id), 0);
@@ -92,13 +92,28 @@ function initDashboard() {
   const spend = thisMonth.filter(t=> t.amount_base_chf<0).reduce((s,t)=>s+t.amount_base_chf,0);
   const income = thisMonth.filter(t=> t.amount_base_chf>0).reduce((s,t)=>s+t.amount_base_chf,0);
   document.getElementById("kpi-spend").textContent = fmtCHF(spend);
-  const savingsRate = income>0 ? Math.round((income+spend)/income*100) : 0;
-  document.getElementById("kpi-savings-rate").textContent = income? (savingsRate+"%") : "—";
+  document.getElementById("kpi-currencies").textContent = "Currencies: " + Array.from(new Set(state.transactions.map(t=>t.currency_orig||"CHF"))).join(" · ");
 
   // Charts
   const ctxNW = document.getElementById("chart-networth");
   const seriesNW = rollupNetworthSeries();
-  chartNetworth = makeLineChart(ctxNW, seriesNW.labels, [{ label:"Net Worth", data: seriesNW.values }]);
+
+  // timeframe range for net worth
+  const rangeCtl = document.getElementById("nw-range");
+  if (rangeCtl){
+    rangeCtl.addEventListener("click",(e)=>{
+      if(e.target.tagName!=="BUTTON") return;
+      rangeCtl.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
+      e.target.classList.add("active");
+      const series = rollupNetworthSeries(e.target.dataset.range || "1y");
+      chartNetworth.destroy();
+      chartNetworth = makeCleanLineChart(ctxNW, series.labels, [{label:"Net Worth", data: series.values}]);
+    });
+  }
+  // Use clean chart style initially
+  chartNetworth.destroy();
+  chartNetworth = makeCleanLineChart(ctxNW, seriesNW.labels, [{label:"Net Worth", data: seriesNW.values}]);
+
 
   const ctxCF = document.getElementById("chart-cashflow");
   const byMonth = rollupCashflowByMonth();
@@ -106,10 +121,6 @@ function initDashboard() {
     { label:"Income", data: byMonth.income },
     { label:"Expenses", data: byMonth.expenses }
   ]);
-
-  const ctxCats = document.getElementById("chart-cats");
-  const cats = rollupCategories(90);
-  chartCats = makeDoughnutChart(ctxCats, cats.labels, cats.values);
 
   // Latest tx
   const latestDiv = document.getElementById("latest-tx");
@@ -122,14 +133,18 @@ function accountBalance(accountId) {
     .reduce((s,t)=> s + t.amount_base_chf, 0);
 }
 
-function rollupNetworthSeries() {
+function rollupNetworthSeries(range="1y") {
   // naive cumulative over dates
   const map = new Map();
   for (const t of state.transactions) {
     const v = (map.get(t.date)||0) + t.amount_base_chf;
     map.set(t.date, v);
   }
-  const labels = Array.from(map.keys()).sort();
+  let labels = Array.from(map.keys()).sort();
+  const today = new Date();
+  const cut = new Date(today);
+  const lookups = { "1m":30, "6m":182, "1y":365, "2y":730, "3y":1095 };
+  if (lookups[range]){ cut.setDate(today.getDate()-lookups[range]); labels = labels.filter(d=> new Date(d)>=cut); }
   let cum = 0;
   const values = labels.map(d=> (cum += map.get(d), cum));
   return { labels, values };
@@ -164,6 +179,28 @@ function rollupCategories(days=90) {
 
 // ---------- Transactions ----------
 function initTransactions() {
+// Transactions monthly category chart
+function setupTxCategoryDonut(){
+  const canvas = document.getElementById("chart-cats-monthly");
+  if(!canvas) return;
+  let current = new Date();
+  const labelEl = document.getElementById("tx-month-label");
+  function monthKey(d){ return d.toISOString().slice(0,7); }
+  function render(){
+    labelEl.textContent = current.toLocaleString(undefined,{month:"long", year:"numeric"});
+    const mk = monthKey(current);
+    const data = state.transactions.filter(t=> t.date.startsWith(mk));
+    const byCat = new Map();
+    for (const t of data){ const k=t.category||"Uncategorized"; const v = Math.abs(Math.min(0,t.amount_base_chf)); byCat.set(k,(byCat.get(k)||0)+v); }
+    const labels = Array.from(byCat.keys()); const values = labels.map(l=> Math.round(byCat.get(l)*100)/100);
+    if (canvas._chart) canvas._chart.destroy();
+    canvas._chart = makeDoughnutChart(canvas, labels, values);
+  }
+  document.getElementById("tx-month-prev").onclick = ()=>{ current.setMonth(current.getMonth()-1); render(); };
+  document.getElementById("tx-month-next").onclick = ()=>{ current.setMonth(current.getMonth()+1); render(); };
+  render();
+}
+
   const tbody = document.querySelector("#tx-table tbody");
   tbody.innerHTML = rowsHTML(state.transactions.slice().reverse());
   // filters
@@ -183,6 +220,7 @@ function initTransactions() {
   document.getElementById("filter-text").addEventListener("input", applyFilters);
   catSel.addEventListener("change", applyFilters);
   accSel.addEventListener("change", applyFilters);
+  setupTxCategoryDonut();
 }
 
 function rowsHTML(list){
@@ -191,7 +229,7 @@ function rowsHTML(list){
     <td>${accountName(t.account_id)}</td>
     <td>${esc(t.merchant||"")}</td>
     <td>${esc(t.category||"—")}</td>
-    <td class="right ${t.amount_base_chf<0?"neg":""}">${fmtCHF(t.amount_base_chf)}</td>
+    <td class="right ${t.amount_base_chf<0?"neg":"pos"}">${fmtCHF(t.amount_base_chf)}</td>
   </tr>`).join("");
 }
 
@@ -213,12 +251,15 @@ function initInvestments() {
       const price = getMockPrice(h.symbol);
       const value = price * h.quantity;
       const pl = value - h.cost;
+      const spark = sparkPoints(h.symbol).join(",");
       return `<tr>
         <td>${esc(h.symbol)}</td>
         <td>${h.quantity}</td>
         <td>${fmtCHF(h.cost)}</td>
+        <td>${h.buy_date||"—"}</td>
         <td>${fmtCHF(price)}</td>
-        <td>${fmtCHF(pl)}</td>
+        <td class="${pl>=0?"pos":"neg"}">${fmtCHF(pl)}</td>
+        <td class="small">7d spark: [${spark}]</td>
         <td><button class="btn" data-del="${h.id}">Delete</button></td>
       </tr>`;
     }).join("");
@@ -234,7 +275,8 @@ function initInvestments() {
       id: crypto.randomUUID(),
       symbol: (fd.get("symbol")+"").toUpperCase().trim(),
       quantity: parseFloat(fd.get("quantity")),
-      cost: parseFloat(fd.get("cost"))
+      cost: parseFloat(fd.get("cost")),
+      buy_date: fd.get("buy_date")
     });
     save();
     form.reset();
@@ -243,6 +285,20 @@ function initInvestments() {
   });
   render();
   updatePortfolioChart();
+  const pfCanvas = document.getElementById("chart-portfolio-pl");
+  if(pfCanvas){
+    let ser = portfolioPLSeries("1y");
+    let pfChart = makeCleanLineChart(pfCanvas, ser.labels, [{label:"Portfolio", data: ser.values}]);
+    const rangeCtl = document.getElementById("pf-range");
+    rangeCtl.addEventListener("click",(e)=>{
+      if(e.target.tagName!=="BUTTON") return;
+      rangeCtl.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
+      e.target.classList.add("active");
+      ser = portfolioPLSeries(e.target.dataset.range||"1y");
+      pfChart.destroy();
+      pfChart = makeCleanLineChart(pfCanvas, ser.labels, [{label:"Portfolio", data: ser.values}]);
+    });
+  }
 }
 
 function getMockPrice(symbol){
@@ -252,6 +308,29 @@ function getMockPrice(symbol){
   const price = Math.max(1, base + jitter);
   state.prices[symbol] = price;
   return round2(price);
+}
+
+
+function sparkPoints(symbol){
+  const seed = Array.from(symbol).reduce((s,c)=>s+c.charCodeAt(0),0);
+  const pts=[]; for(let i=0;i<7;i++){ pts.push(Math.round(((seed%50)+20) + Math.sin(i+seed)*3)); }
+  return pts;
+}
+function portfolioPLSeries(range="1y"){
+  const days = {"1m":30,"6m":182,"1y":365}[range]||365;
+  const labels=[]; const values=[];
+  for(let i=days;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    labels.push(d.toISOString().slice(0,10));
+    let total=0;
+    for(const h of state.holdings){
+      const base = Array.from(h.symbol).reduce((s,c)=>s+c.charCodeAt(0),0)%200+20;
+      const price = Math.max(1, base + Math.sin((Date.now()/86400000 - i)+h.symbol.length)*2);
+      total += price * h.quantity;
+    }
+    values.push(Math.round(total*100)/100);
+  }
+  return {labels, values};
 }
 
 function updatePortfolioChart(){
@@ -265,13 +344,25 @@ function updatePortfolioChart(){
 // ---------- Subscriptions ----------
 let chartSubBurn;
 function initSubscriptions(){
+  function updateSubsTotal(){
+    const byCur = new Map();
+    for(const s of state.subscriptions){
+      const m = s.cadence==="monthly" ? s.amount : s.amount/12;
+      byCur.set(s.currency||"CHF", (byCur.get(s.currency||"CHF")||0)+m);
+    }
+    const t = Array.from(byCur.entries()).map(([c,v])=> `${c} ${Math.round(v*100)/100}`).join(" · ");
+    const el = document.getElementById("subs-total"); if(el) el.textContent = "Total monthly: " + (t||"0");
+  }
+
   const form = document.getElementById("sub-form");
   const tbody = document.querySelector("#subs-table tbody");
   const render = () => {
     tbody.innerHTML = state.subscriptions.map(s=>`<tr>
       <td>${esc(s.name)}</td>
-      <td>${fmtCHF(s.amount)}</td>
+      <td>${s.amount}</td>
+      <td>${s.currency||"CHF"}</td>
       <td>${s.cadence}</td>
+      <td>${s.start_date||"—"}</td>
       <td>${s.next_date}</td>
       <td><button class="btn" data-del="${s.id}">Delete</button></td>
     </tr>`).join("");
@@ -287,7 +378,9 @@ function initSubscriptions(){
       id: crypto.randomUUID(),
       name: (fd.get("name")+"").trim(),
       amount: parseFloat(fd.get("amount")),
+      currency: fd.get("currency")||"CHF",
       cadence: fd.get("cadence"),
+      start_date: fd.get("start_date"),
       next_date: fd.get("next_date")
     });
     save();
@@ -297,6 +390,7 @@ function initSubscriptions(){
   });
   render();
   updateSubBurn();
+  updateSubsTotal();
 }
 
 function updateSubBurn(){
@@ -430,6 +524,15 @@ function summaryAfterImport(rows){
 }
 
 // ---------- Charts helpers ----------
+function makeCleanLineChart(ctx, labels, datasets){
+  return new Chart(ctx, { type:"line", data:{labels, datasets},
+    options:{ responsive:true, tension:0.3,
+      plugins:{ legend:{ display:false }, tooltip:{ intersect:false } },
+      scales:{ x:{ grid:{ display:false }, ticks:{ color:"#94a3b8" } },
+              y:{ grid:{ color:"rgba(148,163,184,0.15)" }, ticks:{ color:"#94a3b8" } } }
+    }});
+}
+
 function makeLineChart(ctx, labels, datasets){
   return new Chart(ctx, { type:"line", data: { labels, datasets },
     options: { responsive:true, plugins: { legend: { display:true } }, scales: { x: { ticks: { color:"#94a3b8" } }, y: { ticks: { color:"#94a3b8" } } } } });
